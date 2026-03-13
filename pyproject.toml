@@ -1,0 +1,81 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.optional-dependencies]
+dev = ["build", "twine"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["custom_components/reflex_junction"]
+
+[tool.hatch.build]
+artifacts = ["*.pyi"]
+
+[tool.hatch.version]
+path = "custom_components/reflex_junction/__init__.py"
+
+[project]
+name = "reflex-junction"
+description = "Reflex custom component wrapping @tryvital/vital-link and integrating the Junction (Vital) health data SDK"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Syntropy Health" }]
+keywords = ["reflex", "reflex-custom-components", "junction", "vital", "health-data"]
+dynamic = ["version"]
+
+dependencies = [
+    "vital>=2.1.0",
+    "reflex>=0.8.0",
+    "fastapi>=0.115.0",
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Typing :: Typed",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    # "Framework :: Reflex",  # Should be added once this is accepted
+]
+
+[project.urls]
+repository = "https://github.com/Syntropy-Health/reflex-junction"
+
+[tool.pytest.ini_options]
+# addopts = "--headed"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+exclude = [
+    "**/*.pyi",  # Exclude auto-generated .pyi files (not committed, have generator bugs)
+    ".venv",     # Exclude virtual environment
+    "dist",      # Exclude build artifacts
+    "*.egg-info",
+    "**/.web",   # Exclude Reflex web build directory
+    "**/node_modules",  # Exclude npm dependencies
+]
+
+[tool.ruff.lint]
+extend-select = ["I", "RUF", "T20"]
+ignore = ["RUF012"]
+
+[dependency-groups]
+dev = [
+    "coverage>=7.6.12",
+    "mkdocs-material>=9.6.9",
+    "mkdocstrings-python>=1.16.8",
+    "pre-commit>=4.1.0",
+    "pyright>=1.1.396",
+    "pytest>=8.3.5",
+    "pytest-playwright>=0.7.0",
+    "pytest-pretty>=1.2.0",
+    "ruff>=0.9.10",
+    "semver>=3.0.4",
+    "reflex>=0.8.0",
+    "hatchling>=1.27.0",
+    "uvicorn>=0.38.0",
+    "psutil>=7.0.0",
+    "pytest-asyncio>=1.3.0",
+]

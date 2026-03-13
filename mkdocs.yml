@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=https://squidfunk.github.io/mkdocs-material/schema.json
+
+site_name: Reflex Junction Docs
+site_url: https://syntropy-health.github.io/reflex-junction
+repo_url: https://github.com/Syntropy-Health/reflex-junction
+site_description: Documentation for reflex-junction
+site_author: Syntropy Health
+copyright: Copyright 2025
+
+nav:
+  - Home: index.md
+  - Getting Started: getting_started.md
+
+theme:
+  name: material
+  features:
+    - content.action.edit
+    - navigation.instant
+  palette:
+    - scheme: slate
+      media: "(prefers-color-scheme: dark)"
+      toggle:
+        icon: material/eye
+        name: Switch to light mode
+    - scheme: default
+      media: "(prefers-color-scheme: light)"
+      toggle:
+        icon: material/eye-outline
+        name: Switch to dark mode
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          options:
+            members_order: source
+            show_symbol_type_heading: true

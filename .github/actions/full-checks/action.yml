@@ -1,0 +1,47 @@
+name: 'Full CI Checks'
+description: 'Runs full CI including integration tests with secrets'
+inputs:
+  junction-api-key:
+    description: 'Junction (Vital) API key'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Check env vars set
+      run: |
+        if [ -z "${{ inputs.junction-api-key }}" ]; then
+          echo "JUNCTION_API_KEY is not set"
+          exit 1
+        fi
+      shell: bash
+
+    - name: Create .env
+      run: |
+        echo "JUNCTION_API_KEY=${{ inputs.junction-api-key }}" >> .env
+      shell: bash
+
+    - name: DEBUG - check python version
+      run: uv sync && uv run python --version
+      shell: bash
+
+    - name: Run lint
+      run: task lint
+      shell: bash
+
+    - name: Run typecheck
+      run: task typecheck
+      shell: bash
+
+    - name: Initialize Reflex
+      run: uv run reflex init
+      working-directory: junction_demo
+      shell: bash
+
+    - name: Install playwright
+      run: uv run playwright install chromium
+      shell: bash
+
+    - name: Run tests
+      run: task test
+      shell: bash
