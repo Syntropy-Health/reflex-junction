@@ -10,6 +10,55 @@ import reflex_junction as junction
 
 logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler()])
 
+
+# ---------------------------------------------------------------------------
+# Demo state — auto-provisions sandbox user with demo provider
+# ---------------------------------------------------------------------------
+
+
+class DemoState(junction.JunctionUser):
+    """Extended state that auto-creates a sandbox user and connects a demo provider."""
+
+    demo_status: str = "Not initialized"
+    demo_ready: bool = False
+
+    @rx.event
+    async def setup_demo(self) -> None:
+        """Create a sandbox user, connect Oura demo provider, and load data."""
+        if self.demo_ready:
+            return
+        if self._api_key is None:
+            self.demo_status = "No API key — set JUNCTION_API_KEY env var"
+            return
+
+        self.demo_status = "Creating sandbox user..."
+        try:
+            import uuid as _uuid
+
+            client_id = f"demo-{_uuid.uuid4().hex[:8]}"
+            await junction.JunctionUser.create_user.fn(self, client_id)
+        except Exception as e:
+            self.demo_status = f"Failed to create user: {e}"
+            return
+
+        self.demo_status = "Connecting Oura demo provider (30 days of synthetic data)..."
+        try:
+            await junction.JunctionUser.connect_demo_provider.fn(self, "oura")
+        except Exception as e:
+            self.demo_status = f"Failed to connect demo: {e}"
+            return
+
+        self.demo_status = "Loading health data..."
+        try:
+            await junction.JunctionUser.load_user.fn(self)
+        except Exception as e:
+            self.demo_status = f"Failed to load data: {e}"
+            return
+
+        self.demo_ready = True
+        self.demo_status = "Demo ready — showing real sandbox data"
+
+
 # ---------------------------------------------------------------------------
 # Layout helpers
 # ---------------------------------------------------------------------------
@@ -87,18 +136,27 @@ def stat_card(label: str, value: rx.Var | str, unit: str = "") -> rx.Component:
 def index() -> rx.Component:
     """Overview dashboard with summary cards."""
     return page_layout(
-        rx.text(
-            "Connected: ",
-            rx.text.strong(junction.JunctionState.has_connections),
+        rx.callout(
+            DemoState.demo_status,
+            icon="info",
+            color_scheme=rx.cond(DemoState.demo_ready, "green", "blue"),
         ),
-        rx.text(
-            "Providers: ",
-            rx.text.strong(
-                junction.JunctionState.connected_sources.length()  # type: ignore[attr-defined]
+        rx.cond(
+            ~DemoState.demo_ready,
+            rx.button(
+                "Setup Demo (connect Oura sandbox)",
+                on_click=DemoState.setup_demo,
+                size="3",
+                color_scheme="blue",
             ),
+            rx.fragment(),
         ),
         rx.hstack(
             stat_card("Version", junction.__version__),
+            stat_card(
+                "Providers",
+                junction.JunctionState.connected_sources.length(),  # type: ignore[attr-defined]
+            ),
             stat_card("State", junction.JunctionState.is_initialized),
             spacing="4",
         ),
@@ -113,7 +171,7 @@ def index() -> rx.Component:
                 rx.recharts.y_axis(),
                 rx.recharts.cartesian_grid(stroke_dasharray="3 3"),
                 rx.recharts.tooltip(),
-                data=junction.JunctionUser.chart_sleep_scores,
+                data=DemoState.chart_sleep_scores,
             ),
             width="100%",
             height=300,
@@ -126,7 +184,7 @@ def index() -> rx.Component:
                 rx.recharts.y_axis(),
                 rx.recharts.cartesian_grid(stroke_dasharray="3 3"),
                 rx.recharts.tooltip(),
-                data=junction.JunctionUser.chart_activity_steps,
+                data=DemoState.chart_activity_steps,
             ),
             width="100%",
             height=300,
@@ -151,14 +209,14 @@ def sleep_page() -> rx.Component:
                 rx.recharts.cartesian_grid(stroke_dasharray="3 3"),
                 rx.recharts.tooltip(),
                 rx.recharts.legend(),
-                data=junction.JunctionUser.chart_sleep_scores,
+                data=DemoState.chart_sleep_scores,
             ),
             width="100%",
             height=400,
         ),
         rx.heading("Sleep Sessions", size="5"),
         rx.foreach(
-            junction.JunctionUser.sleep_data,
+            DemoState.sleep_data,
             lambda s: rx.card(
                 rx.hstack(
                     rx.text(s.calendar_date, weight="bold"),
@@ -181,14 +239,14 @@ def activity_page() -> rx.Component:
                 rx.recharts.x_axis(data_key="date"),
                 rx.recharts.y_axis(),
                 rx.recharts.tooltip(),
-                data=junction.JunctionUser.chart_activity_steps,
+                data=DemoState.chart_activity_steps,
             ),
             width="100%",
             height=400,
         ),
         rx.heading("Activity Data", size="5"),
         rx.foreach(
-            junction.JunctionUser.activity_data,
+            DemoState.activity_data,
             lambda a: rx.card(
                 rx.hstack(
                     rx.text(a.calendar_date, weight="bold"),
@@ -206,7 +264,7 @@ def workouts_page() -> rx.Component:
     """Workouts list."""
     return page_layout(
         rx.foreach(
-            junction.JunctionUser.workout_data,
+            DemoState.workout_data,
             lambda w: rx.card(
                 rx.vstack(
                     rx.hstack(
@@ -234,7 +292,7 @@ def body_page() -> rx.Component:
     """Body measurements."""
     return page_layout(
         rx.foreach(
-            junction.JunctionUser.body_data,
+            DemoState.body_data,
             lambda b: rx.card(
                 rx.hstack(
                     rx.text(b.calendar_date, weight="bold"),
@@ -260,7 +318,7 @@ def vitals_page() -> rx.Component:
                 rx.recharts.x_axis(data_key="timestamp"),
                 rx.recharts.y_axis(),
                 rx.recharts.tooltip(),
-                data=junction.JunctionUser.chart_heartrate,
+                data=DemoState.chart_heartrate,
             ),
             width="100%",
             height=300,
@@ -272,7 +330,7 @@ def vitals_page() -> rx.Component:
                 rx.recharts.x_axis(data_key="timestamp"),
                 rx.recharts.y_axis(),
                 rx.recharts.tooltip(),
-                data=junction.JunctionUser.chart_hrv,
+                data=DemoState.chart_hrv,
             ),
             width="100%",
             height=300,
@@ -290,7 +348,7 @@ def vitals_page() -> rx.Component:
                 rx.recharts.y_axis(),
                 rx.recharts.tooltip(),
                 rx.recharts.legend(),
-                data=junction.JunctionUser.chart_blood_pressure,
+                data=DemoState.chart_blood_pressure,
             ),
             width="100%",
             height=300,
@@ -304,7 +362,7 @@ def vitals_page() -> rx.Component:
                 rx.recharts.x_axis(data_key="timestamp"),
                 rx.recharts.y_axis(),
                 rx.recharts.tooltip(),
-                data=junction.JunctionUser.chart_glucose,
+                data=DemoState.chart_glucose,
             ),
             width="100%",
             height=300,
@@ -318,11 +376,11 @@ def labs_page() -> rx.Component:
     return page_layout(
         rx.button(
             "Load Lab Tests",
-            on_click=junction.JunctionUser.fetch_lab_tests,
+            on_click=DemoState.fetch_lab_tests,
         ),
         rx.heading("Available Tests", size="5"),
         rx.foreach(
-            junction.JunctionUser.lab_tests,
+            DemoState.lab_tests,
             lambda t: rx.card(
                 rx.vstack(
                     rx.heading(t.name, size="4"),
@@ -335,7 +393,7 @@ def labs_page() -> rx.Component:
         ),
         rx.heading("Orders", size="5"),
         rx.foreach(
-            junction.JunctionUser.lab_orders,
+            DemoState.lab_orders,
             lambda o: rx.card(
                 rx.hstack(
                     rx.text("Order: ", rx.text.strong(o.id)),
@@ -348,7 +406,7 @@ def labs_page() -> rx.Component:
         ),
         rx.heading("Results", size="5"),
         rx.foreach(
-            junction.JunctionUser.lab_results,
+            DemoState.lab_results,
             lambda r: rx.card(
                 rx.hstack(
                     rx.text(r.name, weight="bold"),
@@ -376,11 +434,11 @@ def providers_page() -> rx.Component:
     return page_layout(
         rx.button(
             "Load Providers",
-            on_click=junction.JunctionUser.fetch_providers,
+            on_click=DemoState.fetch_providers,
         ),
         rx.heading("Available Providers", size="5"),
         rx.foreach(
-            junction.JunctionUser.available_providers,
+            DemoState.available_providers,
             lambda p: rx.card(
                 rx.hstack(
                     rx.text(p["name"], weight="bold"),
@@ -422,10 +480,10 @@ def settings_page() -> rx.Component:
         rx.heading("Introspection", size="5"),
         rx.button(
             "Load Resource Status",
-            on_click=junction.JunctionUser.fetch_introspection,
+            on_click=DemoState.fetch_introspection,
         ),
         rx.foreach(
-            junction.JunctionUser.introspection_data,
+            DemoState.introspection_data,
             lambda r: rx.card(
                 rx.hstack(
                     rx.text(r["resource"], weight="bold"),

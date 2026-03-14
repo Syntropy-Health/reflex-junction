@@ -677,6 +677,9 @@ class JunctionUser(JunctionState):
     @rx.event
     async def fetch_lab_tests(self) -> None:
         """Fetch available lab test panels."""
+        if self._api_key is None:
+            logger.warning("Junction API key not set. Call wrap_app() first.")
+            return
         result = await self.client.lab_tests.get_markers()
         self.lab_tests = [
             LabTest(
@@ -730,6 +733,9 @@ class JunctionUser(JunctionState):
         Args:
             order_id: The lab order ID to fetch results for.
         """
+        if self._api_key is None:
+            logger.warning("Junction API key not set. Call wrap_app() first.")
+            return
         result = await self.client.lab_tests.get_result_metadata(
             order_id=order_id
         )
@@ -754,8 +760,38 @@ class JunctionUser(JunctionState):
     # -----------------------------------------------------------------
 
     @rx.event
+    async def connect_demo_provider(self, provider: str = "oura") -> None:
+        """Connect a demo provider in sandbox for synthetic data.
+
+        Only works in sandbox environment. Creates 30 days of backfilled data.
+
+        Args:
+            provider: Demo provider slug (oura, fitbit, apple_health_kit, freestyle_libre).
+        """
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set. Call create_user() first.")
+            return
+        try:
+            await self.client.link.connect_demo_provider(
+                user_id=self.junction_user_id,
+                provider=provider,
+            )
+            logger.info(
+                "Connected demo provider '%s' for user %s",
+                provider,
+                self.junction_user_id,
+            )
+            # Refresh connected providers list
+            await JunctionState.get_connected_providers.fn(self)
+        except Exception:
+            logger.exception("Failed to connect demo provider '%s'", provider)
+
+    @rx.event
     async def fetch_providers(self) -> None:
         """Fetch the full list of available providers."""
+        if self._api_key is None:
+            logger.warning("Junction API key not set. Call wrap_app() first.")
+            return
         result = await self.client.providers.get_all()
         self.available_providers = [
             {
