@@ -11,6 +11,22 @@ from typing import Any, ClassVar
 import reflex as rx
 from reflex.event import EventCallback, EventType
 
+from .models import (
+    ActivitySummary,
+    BiomarkerResult,
+    BloodPressurePoint,
+    BodyMeasurement,
+    LabOrder,
+    LabTest,
+    LabTestMarker,
+    MealSummary,
+    ProfileData,
+    SleepSummary,
+    SourceInfo,
+    TimeseriesPoint,
+    WorkoutSummary,
+)
+
 logger = logging.getLogger(__name__)
 
 # Environment mapping: string name -> VitalEnvironment enum value
@@ -20,6 +36,17 @@ _ENVIRONMENT_MAP: dict[str, str] = {
     "sandbox_eu": "sandbox_eu",
     "production_eu": "production_eu",
 }
+
+
+def _source_from_sdk(source: Any) -> SourceInfo:
+    """Convert a Vital SDK source object to SourceInfo."""
+    if source is None:
+        return SourceInfo()
+    return SourceInfo(
+        provider=str(getattr(source, "provider", "") or ""),
+        type=str(getattr(source, "type", "") or ""),
+        app_id=str(getattr(source, "app_id", "") or ""),
+    )
 
 
 class MissingApiKeyError(ValueError):
@@ -252,26 +279,636 @@ class JunctionUser(JunctionState):
     Register via register_on_auth_change_handler(JunctionUser.load_user).
     """
 
-    activity_summary: list[dict[str, Any]] = []
-    sleep_summary: list[dict[str, Any]] = []
-    body_summary: list[dict[str, Any]] = []
-    profile: dict[str, Any] = {}
-    meal_summary: list[dict[str, Any]] = []
-    workout_summary: list[dict[str, Any]] = []
+    sleep_data: list[SleepSummary] = []
+    activity_data: list[ActivitySummary] = []
+    workout_data: list[WorkoutSummary] = []
+    body_data: list[BodyMeasurement] = []
+    user_profile: ProfileData | None = None
+    meal_data: list[MealSummary] = []
+
+    # Vitals timeseries (Phase 2)
+    heartrate_data: list[TimeseriesPoint] = []
+    hrv_data: list[TimeseriesPoint] = []
+    blood_oxygen_data: list[TimeseriesPoint] = []
+    glucose_data: list[TimeseriesPoint] = []
+    steps_timeseries: list[TimeseriesPoint] = []
+    calories_timeseries: list[TimeseriesPoint] = []
+    respiratory_rate_data: list[TimeseriesPoint] = []
+    blood_pressure_data: list[BloodPressurePoint] = []
+
+    # Lab testing (Phase 5)
+    lab_tests: list[LabTest] = []
+    lab_orders: list[LabOrder] = []
+    lab_results: list[BiomarkerResult] = []
+
+    # Advanced features (Phase 6)
+    available_providers: list[dict[str, Any]] = []
+    introspection_data: list[dict[str, Any]] = []
+    historical_pulls: list[dict[str, Any]] = []
+
+    @rx.event
+    async def fetch_sleep(self, start_date: str, end_date: str = "") -> None:
+        """Fetch sleep data for the given date range."""
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set. Call create_user() first.")
+            return
+        kwargs: dict[str, Any] = {
+            "user_id": self.junction_user_id,
+            "start_date": start_date,
+        }
+        if end_date:
+            kwargs["end_date"] = end_date
+        result = await self.client.sleep.get(**kwargs)
+        self.sleep_data = [
+            SleepSummary(
+                id=str(getattr(s, "id", "")),
+                calendar_date=str(getattr(s, "calendar_date", "")),
+                bedtime_start=str(getattr(s, "bedtime_start", "")),
+                bedtime_stop=str(getattr(s, "bedtime_stop", "")),
+                duration=getattr(s, "duration", 0) or 0,
+                total=getattr(s, "total", 0) or 0,
+                awake=getattr(s, "awake", 0) or 0,
+                light=getattr(s, "light", 0) or 0,
+                rem=getattr(s, "rem", 0) or 0,
+                deep=getattr(s, "deep", 0) or 0,
+                score=getattr(s, "score", None),
+                efficiency=getattr(s, "efficiency", None),
+                hr_lowest=getattr(s, "hr_lowest", None),
+                hr_average=getattr(s, "hr_average", None),
+                average_hrv=getattr(s, "average_hrv", None),
+                respiratory_rate=getattr(s, "respiratory_rate", None),
+                temperature_delta=getattr(s, "temperature_delta", None),
+                source=_source_from_sdk(getattr(s, "source", None)),
+            )
+            for s in result.sleep
+        ]
+
+    @rx.event
+    async def fetch_activity(self, start_date: str, end_date: str = "") -> None:
+        """Fetch activity data for the given date range."""
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set. Call create_user() first.")
+            return
+        kwargs: dict[str, Any] = {
+            "user_id": self.junction_user_id,
+            "start_date": start_date,
+        }
+        if end_date:
+            kwargs["end_date"] = end_date
+        result = await self.client.activity.get(**kwargs)
+        self.activity_data = [
+            ActivitySummary(
+                id=str(getattr(a, "id", "")),
+                calendar_date=str(getattr(a, "calendar_date", "")),
+                calories_total=getattr(a, "calories_total", None),
+                calories_active=getattr(a, "calories_active", None),
+                steps=getattr(a, "steps", None),
+                distance=getattr(a, "distance", None),
+                low=getattr(a, "low", None),
+                medium=getattr(a, "medium", None),
+                high=getattr(a, "high", None),
+                floors_climbed=getattr(a, "floors_climbed", None),
+                source=_source_from_sdk(getattr(a, "source", None)),
+            )
+            for a in result.activity
+        ]
+
+    @rx.event
+    async def fetch_workouts(self, start_date: str, end_date: str = "") -> None:
+        """Fetch workout data for the given date range."""
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set. Call create_user() first.")
+            return
+        kwargs: dict[str, Any] = {
+            "user_id": self.junction_user_id,
+            "start_date": start_date,
+        }
+        if end_date:
+            kwargs["end_date"] = end_date
+        result = await self.client.workouts.get(**kwargs)
+        self.workout_data = [
+            WorkoutSummary(
+                id=str(getattr(w, "id", "")),
+                calendar_date=str(getattr(w, "calendar_date", "")),
+                title=str(getattr(w, "title", "") or ""),
+                sport_name=str(
+                    getattr(getattr(w, "sport", None), "name", "") or ""
+                ),
+                sport_slug=str(
+                    getattr(getattr(w, "sport", None), "slug", "") or ""
+                ),
+                time_start=str(getattr(w, "time_start", "")),
+                time_end=str(getattr(w, "time_end", "")),
+                duration=getattr(w, "moving_time", 0) or 0,
+                calories=getattr(w, "calories", None),
+                distance=getattr(w, "distance", None),
+                average_hr=getattr(w, "average_hr", None),
+                max_hr=getattr(w, "max_hr", None),
+                average_speed=getattr(w, "average_speed", None),
+                source=_source_from_sdk(getattr(w, "source", None)),
+            )
+            for w in result.workouts
+        ]
+
+    @rx.event
+    async def fetch_body(self, start_date: str, end_date: str = "") -> None:
+        """Fetch body measurement data for the given date range."""
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set. Call create_user() first.")
+            return
+        kwargs: dict[str, Any] = {
+            "user_id": self.junction_user_id,
+            "start_date": start_date,
+        }
+        if end_date:
+            kwargs["end_date"] = end_date
+        result = await self.client.body.get(**kwargs)
+        self.body_data = [
+            BodyMeasurement(
+                id=str(getattr(b, "id", "")),
+                calendar_date=str(getattr(b, "calendar_date", "")),
+                weight=getattr(b, "weight", None),
+                fat=getattr(b, "fat", None),
+                body_mass_index=getattr(b, "body_mass_index", None),
+                muscle_mass_percentage=getattr(b, "muscle_mass_percentage", None),
+                water_percentage=getattr(b, "water_percentage", None),
+                source=_source_from_sdk(getattr(b, "source", None)),
+            )
+            for b in result.body
+        ]
+
+    @rx.event
+    async def fetch_profile(self) -> None:
+        """Fetch health profile from connected provider."""
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set. Call create_user() first.")
+            return
+        result = await self.client.profile.get(user_id=self.junction_user_id)
+        self.user_profile = ProfileData(
+            id=str(getattr(result, "id", "")),
+            height=getattr(result, "height", None),
+            birth_date=(
+                str(getattr(result, "birth_date", ""))
+                if getattr(result, "birth_date", None)
+                else None
+            ),
+            gender=(
+                str(getattr(result, "gender", ""))
+                if getattr(result, "gender", None)
+                else None
+            ),
+            sex=(
+                str(getattr(result, "sex", ""))
+                if getattr(result, "sex", None)
+                else None
+            ),
+            source=_source_from_sdk(getattr(result, "source", None)),
+        )
+
+    @rx.event
+    async def fetch_meals(self, start_date: str, end_date: str = "") -> None:
+        """Fetch meal data for the given date range."""
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set. Call create_user() first.")
+            return
+        kwargs: dict[str, Any] = {
+            "user_id": self.junction_user_id,
+            "start_date": start_date,
+        }
+        if end_date:
+            kwargs["end_date"] = end_date
+        result = await self.client.meal.get(**kwargs)
+        self.meal_data = [
+            MealSummary(
+                id=str(getattr(m, "id", "")),
+                name=str(getattr(m, "name", "") or ""),
+                timestamp=str(getattr(m, "timestamp", "")),
+                calories=getattr(
+                    getattr(m, "energy", None), "value", None
+                ),
+                protein=getattr(
+                    getattr(m, "macros", None), "protein", None
+                ),
+                carbs=getattr(
+                    getattr(m, "macros", None), "carbs", None
+                ),
+                fat=getattr(
+                    getattr(m, "macros", None), "fat", None
+                ),
+                fiber=getattr(
+                    getattr(m, "macros", None), "fiber", None
+                ),
+                sugar=getattr(
+                    getattr(m, "macros", None), "sugar", None
+                ),
+                source=_source_from_sdk(getattr(m, "source", None)),
+            )
+            for m in result.meals
+        ]
+
+    # -----------------------------------------------------------------
+    # Vitals timeseries fetch methods (Phase 2)
+    # -----------------------------------------------------------------
+
+    @rx.event
+    async def fetch_heartrate(
+        self, start_date: str, end_date: str = ""
+    ) -> None:
+        """Fetch heart rate timeseries data."""
+        self.heartrate_data = await self._fetch_timeseries(
+            "heartrate", start_date, end_date
+        )
+
+    @rx.event
+    async def fetch_hrv(
+        self, start_date: str, end_date: str = ""
+    ) -> None:
+        """Fetch heart rate variability timeseries data."""
+        self.hrv_data = await self._fetch_timeseries(
+            "hrv", start_date, end_date
+        )
+
+    @rx.event
+    async def fetch_blood_oxygen(
+        self, start_date: str, end_date: str = ""
+    ) -> None:
+        """Fetch blood oxygen (SpO2) timeseries data."""
+        self.blood_oxygen_data = await self._fetch_timeseries(
+            "blood_oxygen", start_date, end_date
+        )
+
+    @rx.event
+    async def fetch_glucose(
+        self, start_date: str, end_date: str = ""
+    ) -> None:
+        """Fetch glucose timeseries data."""
+        self.glucose_data = await self._fetch_timeseries(
+            "glucose", start_date, end_date
+        )
+
+    @rx.event
+    async def fetch_steps_timeseries(
+        self, start_date: str, end_date: str = ""
+    ) -> None:
+        """Fetch steps timeseries data."""
+        self.steps_timeseries = await self._fetch_timeseries(
+            "steps", start_date, end_date
+        )
+
+    @rx.event
+    async def fetch_calories_timeseries(
+        self, start_date: str, end_date: str = ""
+    ) -> None:
+        """Fetch calories timeseries data."""
+        self.calories_timeseries = await self._fetch_timeseries(
+            "calories_active", start_date, end_date
+        )
+
+    @rx.event
+    async def fetch_respiratory_rate(
+        self, start_date: str, end_date: str = ""
+    ) -> None:
+        """Fetch respiratory rate timeseries data."""
+        self.respiratory_rate_data = await self._fetch_timeseries(
+            "respiratory_rate", start_date, end_date
+        )
+
+    @rx.event
+    async def fetch_blood_pressure(
+        self, start_date: str, end_date: str = ""
+    ) -> None:
+        """Fetch blood pressure timeseries data."""
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set. Call create_user() first.")
+            return
+        kwargs: dict[str, Any] = {
+            "user_id": self.junction_user_id,
+            "start_date": start_date,
+        }
+        if end_date:
+            kwargs["end_date"] = end_date
+        result = await self.client.vitals.blood_pressure(**kwargs)
+        self.blood_pressure_data = [
+            BloodPressurePoint(
+                timestamp=str(getattr(p, "timestamp", "")),
+                systolic=float(getattr(p, "systolic", 0) or 0),
+                diastolic=float(getattr(p, "diastolic", 0) or 0),
+                unit=str(getattr(p, "unit", "mmHg") or "mmHg"),
+            )
+            for p in result
+        ]
+
+    @rx.event
+    async def fetch_vital(
+        self, metric: str, start_date: str, end_date: str = ""
+    ) -> None:
+        """Fetch any vitals timeseries by metric name.
+
+        Generic escape hatch for the ~50 metrics not covered by
+        dedicated helpers. Stores the result in the corresponding
+        ``*_data`` state var if one exists, otherwise logs a warning.
+
+        Args:
+            metric: Vital SDK method name (e.g. "stress_level").
+            start_date: ISO date string for range start.
+            end_date: Optional ISO date string for range end.
+        """
+        # Map metric names to state var names
+        _metric_to_var: dict[str, str] = {
+            "heartrate": "heartrate_data",
+            "hrv": "hrv_data",
+            "blood_oxygen": "blood_oxygen_data",
+            "glucose": "glucose_data",
+            "steps": "steps_timeseries",
+            "calories_active": "calories_timeseries",
+            "respiratory_rate": "respiratory_rate_data",
+        }
+        points = await self._fetch_timeseries(metric, start_date, end_date)
+        var_name = _metric_to_var.get(metric)
+        if var_name:
+            setattr(self, var_name, points)
+        else:
+            logger.info(
+                "fetch_vital(%s): %d points (no dedicated state var)",
+                metric,
+                len(points),
+            )
+
+    async def _fetch_timeseries(
+        self, metric: str, start_date: str, end_date: str = ""
+    ) -> list[TimeseriesPoint]:
+        """Internal helper to fetch a vitals timeseries from the SDK.
+
+        Args:
+            metric: SDK method name on client.vitals (e.g. "heartrate").
+            start_date: ISO date string.
+            end_date: Optional ISO date string.
+
+        Returns:
+            List of TimeseriesPoint dataclasses.
+        """
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set. Call create_user() first.")
+            return []
+        method = getattr(self.client.vitals, metric, None)
+        if method is None:
+            logger.error("Unknown vitals metric: %s", metric)
+            return []
+        kwargs: dict[str, Any] = {
+            "user_id": self.junction_user_id,
+            "start_date": start_date,
+        }
+        if end_date:
+            kwargs["end_date"] = end_date
+        result = await method(**kwargs)
+        return [
+            TimeseriesPoint(
+                timestamp=str(getattr(p, "timestamp", "")),
+                value=float(getattr(p, "value", 0) or 0),
+                unit=str(getattr(p, "unit", "") or ""),
+            )
+            for p in result
+        ]
+
+    # -----------------------------------------------------------------
+    # Lab testing methods (Phase 5)
+    # -----------------------------------------------------------------
+
+    @rx.event
+    async def fetch_lab_tests(self) -> None:
+        """Fetch available lab test panels."""
+        result = await self.client.lab_tests.get_markers()
+        self.lab_tests = [
+            LabTest(
+                id=getattr(t, "id", 0) or 0,
+                name=str(getattr(t, "name", "") or ""),
+                slug=str(getattr(t, "slug", "") or ""),
+                description=str(getattr(t, "description", "") or ""),
+                method=str(getattr(t, "method", "") or ""),
+                sample_type=str(getattr(t, "sample_type", "") or ""),
+                is_active=bool(getattr(t, "is_active", True)),
+                markers=[
+                    LabTestMarker(
+                        id=getattr(m, "id", 0) or 0,
+                        name=str(getattr(m, "name", "") or ""),
+                        slug=str(getattr(m, "slug", "") or ""),
+                        description=str(getattr(m, "description", "") or ""),
+                    )
+                    for m in getattr(t, "markers", []) or []
+                ],
+            )
+            for t in getattr(result, "markers", []) or []
+        ]
+
+    @rx.event
+    async def fetch_lab_orders(self) -> None:
+        """Fetch lab orders for the current user."""
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set. Call create_user() first.")
+            return
+        result = await self.client.lab_tests.get_orders(
+            user_id=self.junction_user_id
+        )
+        orders = getattr(result, "orders", []) or []
+        self.lab_orders = [
+            LabOrder(
+                id=str(getattr(o, "id", "")),
+                user_id=str(getattr(o, "user_id", "")),
+                patient_details=dict(getattr(o, "patient_details", {}) or {}),
+                lab_test_id=getattr(o, "lab_test_id", 0) or 0,
+                status=str(getattr(o, "status", "") or ""),
+                created_at=str(getattr(o, "created_at", "")),
+                updated_at=str(getattr(o, "updated_at", "")),
+            )
+            for o in orders
+        ]
+
+    @rx.event
+    async def fetch_lab_results(self, order_id: str) -> None:
+        """Fetch biomarker results for a specific lab order.
+
+        Args:
+            order_id: The lab order ID to fetch results for.
+        """
+        result = await self.client.lab_tests.get_result_metadata(
+            order_id=order_id
+        )
+        results_data = getattr(result, "results", []) or []
+        self.lab_results = [
+            BiomarkerResult(
+                name=str(getattr(r, "name", "") or ""),
+                slug=str(getattr(r, "slug", "") or ""),
+                value=float(getattr(r, "value", 0) or 0),
+                unit=str(getattr(r, "unit", "") or ""),
+                min_range=getattr(r, "min_range", None),
+                max_range=getattr(r, "max_range", None),
+                is_above_range=bool(getattr(r, "is_above_range", False)),
+                is_below_range=bool(getattr(r, "is_below_range", False)),
+                result_text=str(getattr(r, "result_text", "") or ""),
+            )
+            for r in results_data
+        ]
+
+    # -----------------------------------------------------------------
+    # Advanced features (Phase 6)
+    # -----------------------------------------------------------------
+
+    @rx.event
+    async def fetch_providers(self) -> None:
+        """Fetch the full list of available providers."""
+        result = await self.client.providers.get_all()
+        self.available_providers = [
+            {
+                "name": str(getattr(p, "name", "") or ""),
+                "slug": str(getattr(p, "slug", "") or ""),
+                "logo": str(getattr(p, "logo", "") or ""),
+                "auth_type": str(getattr(p, "auth_type", "") or ""),
+                "status": str(getattr(p, "status", "") or ""),
+            }
+            for p in result
+        ]
+
+    @rx.event
+    async def fetch_introspection(self) -> None:
+        """Fetch introspection data (resource status) for the current user."""
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set. Call create_user() first.")
+            return
+        result = await self.client.introspect.get_user_resources(
+            user_id=self.junction_user_id
+        )
+        self.introspection_data = [
+            {
+                "resource": str(getattr(r, "resource", "") or ""),
+                "provider": str(getattr(r, "provider", "") or ""),
+                "status": str(getattr(r, "status", "") or ""),
+            }
+            for r in getattr(result, "resources", []) or []
+        ]
+
+    @rx.event
+    async def fetch_historical_pulls(self) -> None:
+        """Fetch historical pull status for the current user."""
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set. Call create_user() first.")
+            return
+        result = await self.client.introspect.get_user_historical_pulls(
+            user_id=self.junction_user_id
+        )
+        self.historical_pulls = [
+            {
+                "resource": str(getattr(p, "resource", "") or ""),
+                "provider": str(getattr(p, "provider", "") or ""),
+                "status": str(getattr(p, "status", "") or ""),
+            }
+            for p in getattr(result, "historical_pulls", []) or []
+        ]
 
     @rx.event
     async def load_user(self) -> None:
-        """Load the current user's connected providers and profile.
+        """Load the current user's connections and health data.
 
-        This is typically registered as a dependent handler via
-        register_on_auth_change_handler(JunctionUser.load_user).
+        Fetches connected providers and all health data types with a
+        30-day default date range. Errors in individual fetches do not
+        prevent other fetches from completing.
         """
         if not self.junction_user_id:
             return
+        from datetime import date, timedelta
+
+        end = date.today()
+        start = end - timedelta(days=30)
+        start_str = start.isoformat()
+        end_str = end.isoformat()
+
         try:
-            await self.get_connected_providers()
+            await JunctionState.get_connected_providers.fn(self)
         except Exception:
             logger.exception("Failed to load connected providers")
+
+        for method_name, args in [
+            ("fetch_sleep", (start_str, end_str)),
+            ("fetch_activity", (start_str, end_str)),
+            ("fetch_workouts", (start_str, end_str)),
+            ("fetch_body", (start_str, end_str)),
+            ("fetch_profile", ()),
+            ("fetch_meals", (start_str, end_str)),
+            ("fetch_heartrate", (start_str, end_str)),
+            ("fetch_hrv", (start_str, end_str)),
+            ("fetch_blood_oxygen", (start_str, end_str)),
+            ("fetch_glucose", (start_str, end_str)),
+        ]:
+            try:
+                handler = getattr(JunctionUser, method_name)
+                await handler.fn(self, *args)
+            except Exception:
+                logger.exception("Failed to fetch %s", method_name)
+
+    @rx.var
+    def chart_sleep_scores(self) -> list[dict[str, Any]]:
+        """Sleep scores for recharts (date + score)."""
+        return [
+            {
+                "date": s.calendar_date,
+                "score": s.score or 0,
+                "duration_hrs": round(s.total / 3600, 1),
+            }
+            for s in self.sleep_data
+            if s.score is not None
+        ]
+
+    @rx.var
+    def chart_activity_steps(self) -> list[dict[str, Any]]:
+        """Daily steps for recharts (date + steps)."""
+        return [
+            {
+                "date": a.calendar_date,
+                "steps": a.steps or 0,
+                "calories": round(a.calories_active or 0),
+            }
+            for a in self.activity_data
+        ]
+
+    @rx.var
+    def latest_body(self) -> BodyMeasurement | None:
+        """Most recent body measurement."""
+        return self.body_data[-1] if self.body_data else None
+
+    @rx.var
+    def chart_heartrate(self) -> list[dict[str, Any]]:
+        """Heart rate timeseries for recharts."""
+        return [
+            {"timestamp": p.timestamp, "bpm": p.value}
+            for p in self.heartrate_data
+        ]
+
+    @rx.var
+    def chart_hrv(self) -> list[dict[str, Any]]:
+        """HRV timeseries for recharts."""
+        return [
+            {"timestamp": p.timestamp, "hrv": p.value}
+            for p in self.hrv_data
+        ]
+
+    @rx.var
+    def chart_blood_pressure(self) -> list[dict[str, Any]]:
+        """Blood pressure timeseries for recharts."""
+        return [
+            {
+                "timestamp": p.timestamp,
+                "systolic": p.systolic,
+                "diastolic": p.diastolic,
+            }
+            for p in self.blood_pressure_data
+        ]
+
+    @rx.var
+    def chart_glucose(self) -> list[dict[str, Any]]:
+        """Glucose timeseries for recharts."""
+        return [
+            {"timestamp": p.timestamp, "glucose": p.value, "unit": p.unit}
+            for p in self.glucose_data
+        ]
 
 
 def junction_provider(

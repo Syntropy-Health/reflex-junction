@@ -12,22 +12,6 @@ from reflex_junction.junction_provider import (
 )
 
 
-@pytest.fixture(autouse=True)
-def _reset_state():
-    """Reset JunctionState ClassVars between tests."""
-    JunctionState._api_key = None
-    JunctionState._environment = "sandbox"
-    JunctionState._client = None
-    JunctionState._on_load_events = {}
-    JunctionState._dependent_handlers = {}
-    yield
-    JunctionState._api_key = None
-    JunctionState._environment = "sandbox"
-    JunctionState._client = None
-    JunctionState._on_load_events = {}
-    JunctionState._dependent_handlers = {}
-
-
 class TestSetApiKey:
     """Tests for JunctionState._set_api_key."""
 
