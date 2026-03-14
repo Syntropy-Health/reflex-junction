@@ -44,6 +44,10 @@ repository = "https://github.com/Syntropy-Health/reflex-junction"
 
 [tool.pytest.ini_options]
 # addopts = "--headed"
+markers = [
+    "integration: tests that hit the real Vital/Junction sandbox API (require JUNCTION_API_KEY)",
+]
+asyncio_mode = "auto"
 
 [tool.pyright]
 venvPath = "."
