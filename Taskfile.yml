@@ -19,13 +19,28 @@ tasks:
       - uv run mkdocs serve -a localhost:9000
 
   test:
+    desc: Run lint, typecheck, and all unit tests
     deps:
       - task: lint
       - task: typecheck
     cmds:
       - uv sync --dev
-      - uv run playwright install chromium
-      - uv run pytest
+      - uv run pytest -m "not integration" --tb=short
+
+  test-integration:
+    desc: Run integration tests against Vital sandbox (requires JUNCTION_API_KEY)
+    cmds:
+      - uv sync --dev
+      - uv run pytest -m integration -v --tb=short
+
+  test-all:
+    desc: Run all tests including integration
+    deps:
+      - task: lint
+      - task: typecheck
+    cmds:
+      - uv sync --dev
+      - uv run pytest --tb=short
 
   lint:
     cmds:

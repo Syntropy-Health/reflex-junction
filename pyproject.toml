@@ -44,6 +44,10 @@ repository = "https://github.com/Syntropy-Health/reflex-junction"
 
 [tool.pytest.ini_options]
 # addopts = "--headed"
+markers = [
+    "integration: tests that hit the real Vital/Junction sandbox API (require JUNCTION_API_KEY)",
+]
+asyncio_mode = "auto"
 
 [tool.pyright]
 venvPath = "."
@@ -55,6 +59,8 @@ exclude = [
     "*.egg-info",
     "**/.web",   # Exclude Reflex web build directory
     "**/node_modules",  # Exclude npm dependencies
+    "tests",     # Tests use Reflex runtime internals (.fn, .fget) that pyright can't model
+    "junction_demo",  # Demo app uses same runtime patterns
 ]
 
 [tool.ruff.lint]

@@ -1,6 +1,16 @@
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
+from .base import (
+    JunctionLink,
+    JunctionLinkButton,
+    junction_link,
+    junction_link_button,
+)
 from .fastapi_helpers import (
+    ConnectionEvent,
+    DataEvent,
+    WebhookEvent,
+    WebhookVerificationError,
     create_webhook_router,
     register_webhook_api,
 )
@@ -13,18 +23,52 @@ from .junction_provider import (
     wrap_app,
 )
 from .models import (
+    ActivitySummary,
+    BiomarkerResult,
+    BloodPressurePoint,
+    BodyMeasurement,
     JunctionConfig,
+    LabOrder,
+    LabTest,
+    LabTestMarker,
     LinkConfig,
+    MealSummary,
+    ProfileData,
     ProviderInfo,
+    SleepSummary,
+    SourceInfo,
+    TimeseriesPoint,
+    WorkoutSummary,
 )
 
 __all__ = [
+    "ActivitySummary",
+    "BiomarkerResult",
+    "BloodPressurePoint",
+    "BodyMeasurement",
+    "ConnectionEvent",
+    "DataEvent",
     "JunctionConfig",
+    "JunctionLink",
+    "JunctionLinkButton",
     "JunctionState",
     "JunctionUser",
+    "LabOrder",
+    "LabTest",
+    "LabTestMarker",
     "LinkConfig",
+    "MealSummary",
+    "ProfileData",
     "ProviderInfo",
+    "SleepSummary",
+    "SourceInfo",
+    "TimeseriesPoint",
+    "WebhookEvent",
+    "WebhookVerificationError",
+    "WorkoutSummary",
     "create_webhook_router",
+    "junction_link",
+    "junction_link_button",
     "junction_provider",
     "on_load",
     "register_on_auth_change_handler",

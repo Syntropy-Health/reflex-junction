@@ -10,12 +10,15 @@ A [Reflex](https://reflex.dev) custom component for integrating [Junction (Vital
 
 ## Features
 
-- **JunctionState** — Reflex state management for the Vital API (user creation, provider connections, data refresh)
-- **JunctionUser** — Extended state with health data summaries (activity, sleep, body, meals, workouts)
-- **wrap_app()** — One-line integration that configures your entire Reflex app
-- **junction_provider()** — Component-level integration for wrapping specific pages
-- **Webhook support** — FastAPI router for receiving real-time health data events
-- **Link widget support** — Token generation for the Vital Link provider connection UI
+- **Health Data Summaries** — Sleep, activity, workouts, body composition, meals, profile
+- **Vitals Timeseries** — Heart rate, HRV, SpO2, glucose, blood pressure, respiratory rate, steps, calories
+- **Lab Testing** — Test panels, orders, biomarker results with range indicators
+- **Link Widget** — React component wrapping `@tryvital/vital-link` for provider connection UI
+- **Webhooks** — Svix signature verification, typed event models, event routing
+- **Introspection** — Resource status, historical pull tracking, provider listing
+- **Chart-Ready** — Computed vars formatted for `rx.recharts` (line, bar, composed charts)
+- **Visual Demo** — 9-page demo app with sidebar nav, dark theme, and real data visualizations
+- **Typed Models** — Python dataclasses for all data types (no `dict[str, Any]`)
 - **Multi-region** — US and EU sandbox/production environments
 
 ## Installation
@@ -61,35 +64,81 @@ def health_dashboard() -> rx.Component:
     return rx.container(
         rx.heading("Health Dashboard"),
         rx.text(f"Connected: {junction.JunctionState.has_connections}"),
-        rx.foreach(
-            junction.JunctionState.connected_sources,
-            lambda p: rx.badge(p["name"]),
+        # Sleep scores chart
+        rx.recharts.line_chart(
+            rx.recharts.line(data_key="score"),
+            rx.recharts.x_axis(data_key="date"),
+            data=junction.JunctionUser.chart_sleep_scores,
+        ),
+        # Heart rate timeseries
+        rx.recharts.line_chart(
+            rx.recharts.line(data_key="bpm", stroke="#ef4444"),
+            rx.recharts.x_axis(data_key="timestamp"),
+            data=junction.JunctionUser.chart_heartrate,
         ),
     )
 ```
 
-## Usage
-
-### Using `junction_provider` directly
-
-For page-level integration instead of app-wide:
+### 4. Add the Link widget
 
 ```python
-import reflex_junction as junction
+from reflex_junction import junction_link_button
 
-def health_page() -> rx.Component:
-    return junction.junction_provider(
-        rx.container(
-            rx.text("Connected providers: "),
-            rx.text(junction.JunctionState.connected_sources.length()),
+def connect_page() -> rx.Component:
+    return rx.container(
+        junction_link_button(
+            "Connect a Provider",
+            link_token=junction.JunctionState.link_token,
+            env="sandbox",
+            on_success=junction.JunctionState.get_connected_providers,
         ),
-        api_key=os.environ["JUNCTION_API_KEY"],
     )
 ```
 
-### Webhook support
+## Data Types
 
-Receive real-time events when health data updates:
+### Health Summaries (Phase 1)
+
+| Model | Description | Key Fields |
+|-------|-------------|------------|
+| `SleepSummary` | Sleep sessions | score, duration, stages, HR, HRV |
+| `ActivitySummary` | Daily activity | steps, calories, distance, intensity |
+| `WorkoutSummary` | Workout sessions | sport, duration, calories, HR |
+| `BodyMeasurement` | Body composition | weight, BMI, fat%, muscle% |
+| `ProfileData` | User profile | height, birth_date, gender |
+| `MealSummary` | Nutrition entries | calories, protein, carbs, fat |
+
+### Vitals Timeseries (Phase 2)
+
+| Method | Data Key | Unit |
+|--------|----------|------|
+| `fetch_heartrate()` | bpm | bpm |
+| `fetch_hrv()` | hrv | ms |
+| `fetch_blood_oxygen()` | SpO2 | % |
+| `fetch_glucose()` | glucose | mg/dL |
+| `fetch_blood_pressure()` | systolic/diastolic | mmHg |
+| `fetch_steps_timeseries()` | steps | steps |
+| `fetch_calories_timeseries()` | calories | kcal |
+| `fetch_respiratory_rate()` | rate | breaths/min |
+| `fetch_vital(metric, ...)` | Generic escape hatch for 50+ metrics |
+
+### Lab Testing (Phase 5)
+
+| Model | Description |
+|-------|-------------|
+| `LabTest` | Test panel with markers |
+| `LabOrder` | Placed order with status |
+| `BiomarkerResult` | Result with range indicators |
+
+### Webhook Events (Phase 4)
+
+| Model | Prefix | Example |
+|-------|--------|---------|
+| `ConnectionEvent` | `connection.*` | Provider connected/disconnected |
+| `DataEvent` | `historical.*`, `daily.*` | New health data available |
+| `WebhookEvent` | Base class | Any event type |
+
+## Webhook Support
 
 ```python
 junction.wrap_app(
@@ -101,7 +150,23 @@ junction.wrap_app(
 )
 ```
 
-### Environment options
+Webhooks use Svix signature verification. Invalid signatures are rejected with 401.
+
+## Running the Demo
+
+The repo includes a 9-page demo app in `junction_demo/`.
+
+```bash
+uv sync --dev
+cd junction_demo
+export JUNCTION_API_KEY=sk_us_...
+uv run reflex init
+uv run reflex run
+```
+
+Pages: Dashboard, Sleep, Activity, Workouts, Body, Vitals, Labs, Providers, Settings.
+
+## Environment Options
 
 | Environment      | Description        |
 |------------------|--------------------|
@@ -117,15 +182,14 @@ junction.wrap_app(
 | Class | Description |
 |-------|-------------|
 | `JunctionState` | Core state — user creation, provider management, Link tokens |
-| `JunctionUser` | Extended state — health data summaries (activity, sleep, body, meals, workouts) |
+| `JunctionUser` | Extended state — health data, vitals, labs, introspection |
 
-### Configuration Models
+### Components
 
-| Class | Description |
-|-------|-------------|
-| `JunctionConfig` | Environment and region settings |
-| `LinkConfig` | Redirect URL and provider filter for the Link widget |
-| `ProviderInfo` | Provider metadata (name, slug, logo, auth_type) |
+| Component | Description |
+|-----------|-------------|
+| `JunctionLink` / `junction_link` | Declarative VitalLink button (requires public key) |
+| `JunctionLinkButton` / `junction_link_button` | Token-based Link widget (uses `useVitalLink` hook) |
 
 ### Functions
 
@@ -138,32 +202,16 @@ junction.wrap_app(
 | `create_webhook_router(prefix, secret)` | Create a standalone FastAPI webhook router |
 | `register_webhook_api(app, secret, prefix)` | Register webhook endpoint on a Reflex app |
 
-### JunctionState Events
-
-| Event | Description |
-|-------|-------------|
-| `create_user(client_user_id)` | Create a Junction user mapped to your app's user |
-| `get_connected_providers()` | Fetch connected health data providers |
-| `disconnect_provider(provider)` | Disconnect a specific provider by slug |
-| `refresh_data()` | Trigger data sync from all connected providers |
-| `create_link_token(redirect_url)` | Generate a Link widget token |
-
 See the [full documentation](https://syntropy-health.github.io/reflex-junction/) for detailed guides.
 
 ## Contributing
-
-Contributions welcome! We use [Taskfile](https://taskfile.dev/) for common tasks:
 
 ```bash
 task install          # Install dev dependencies + pre-commit
 task test             # Run lint + typecheck + pytest
 task run              # Run the demo app
 task run-docs         # Serve docs locally at localhost:9000
-task bump-patch       # Bump patch version (bug fix)
-task bump-minor       # Bump minor version (new feature)
 ```
-
-Workflow: Fork → feature branch → add tests → submit PR.
 
 ## License
 
