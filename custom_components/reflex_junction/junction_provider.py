@@ -782,7 +782,7 @@ class JunctionUser(JunctionState):
                 self.junction_user_id,
             )
             # Refresh connected providers list
-            await JunctionState.get_connected_providers.fn(self)
+            await JunctionState.get_connected_providers.fn(self)  # type: ignore[attr-defined]
         except Exception:
             logger.exception("Failed to connect demo provider '%s'", provider)
 
@@ -858,7 +858,7 @@ class JunctionUser(JunctionState):
         end_str = end.isoformat()
 
         try:
-            await JunctionState.get_connected_providers.fn(self)
+            await JunctionState.get_connected_providers.fn(self)  # type: ignore[attr-defined]
         except Exception:
             logger.exception("Failed to load connected providers")
 

@@ -59,6 +59,8 @@ exclude = [
     "*.egg-info",
     "**/.web",   # Exclude Reflex web build directory
     "**/node_modules",  # Exclude npm dependencies
+    "tests",     # Tests use Reflex runtime internals (.fn, .fget) that pyright can't model
+    "junction_demo",  # Demo app uses same runtime patterns
 ]
 
 [tool.ruff.lint]
