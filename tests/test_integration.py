@@ -12,6 +12,7 @@ import os
 import uuid
 
 import pytest
+import pytest_asyncio
 
 pytestmark = pytest.mark.integration
 
@@ -25,37 +26,29 @@ def api_key() -> str:
     return SANDBOX_KEY
 
 
-@pytest.fixture(scope="module")
-def vital_client(api_key: str):
+@pytest_asyncio.fixture()
+async def vital_client(api_key: str):
     """Create a real AsyncVital client for sandbox testing."""
     from vital import AsyncVital
 
-    return AsyncVital(api_key=api_key)
+    client = AsyncVital(api_key=api_key)
+    yield client
 
 
-@pytest.fixture(scope="module")
-def test_user_id(vital_client, api_key: str):
-    """Create a test user in sandbox and return the user_id. Cleaned up after module."""
-    import asyncio
+@pytest_asyncio.fixture()
+async def test_user_id(vital_client):
+    """Create a test user in sandbox and return the user_id. Cleaned up after test."""
+    client_user_id = f"ci-test-{uuid.uuid4().hex[:12]}"
+    result = await vital_client.user.create(client_user_id=client_user_id)
+    user_id = result.user_id
 
-    async def _create():
-        client_user_id = f"ci-test-{uuid.uuid4().hex[:12]}"
-        result = await vital_client.user.create(client_user_id=client_user_id)
-        return result.user_id
-
-    user_id = asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
-        _create()
-    )
     yield user_id
 
     # Cleanup: deregister test user
-    async def _cleanup():
-        try:
-            await vital_client.user.deregister(user_id)
-        except Exception:
-            pass
-
-    asyncio.get_event_loop_policy().new_event_loop().run_until_complete(_cleanup())
+    try:
+        await vital_client.user.deregister(user_id)
+    except Exception:
+        pass
 
 
 class TestSandboxUserLifecycle:
