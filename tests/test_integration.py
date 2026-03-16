@@ -31,8 +31,9 @@ def api_key() -> str:
 async def vital_client(api_key: str):
     """Create a real AsyncVital client for sandbox testing."""
     from vital import AsyncVital
+    from vital.environment import VitalEnvironment
 
-    client = AsyncVital(api_key=api_key)
+    client = AsyncVital(api_key=api_key, environment=VitalEnvironment.SANDBOX)
     yield client
 
 
@@ -54,7 +55,7 @@ async def test_user_id(vital_client):
 
     # Cleanup: deregister test user
     try:
-        await vital_client.user.deregister(user_id)
+        await vital_client.user.delete(user_id)
     except Exception:
         pass
 
@@ -76,7 +77,7 @@ class TestSandboxUserLifecycle:
             raise
         assert result.user_id
         # Cleanup
-        await vital_client.user.deregister(result.user_id)
+        await vital_client.user.delete(result.user_id)
 
     @pytest.mark.asyncio()
     async def test_get_connected_providers(self, vital_client, test_user_id):
