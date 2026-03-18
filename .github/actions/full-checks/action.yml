@@ -16,11 +16,6 @@ runs:
         fi
       shell: bash
 
-    - name: Create .env
-      run: |
-        echo "JUNCTION_API_KEY=${{ inputs.junction-api-key }}" >> .env
-      shell: bash
-
     - name: Install dependencies
       run: uv sync --dev
       shell: bash

@@ -9,7 +9,7 @@ import uuid
 from typing import Any, ClassVar
 
 import reflex as rx
-from reflex.event import EventCallback, EventType
+from reflex.event import EventType
 
 from .models import (
     ActivitySummary,
@@ -29,13 +29,10 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-# Environment mapping: string name -> VitalEnvironment enum value
-_ENVIRONMENT_MAP: dict[str, str] = {
-    "sandbox": "sandbox",
-    "production": "production",
-    "sandbox_eu": "sandbox_eu",
-    "production_eu": "production_eu",
-}
+# Valid environment names for validation
+_VALID_ENVIRONMENTS: frozenset[str] = frozenset(
+    {"sandbox", "production", "sandbox_eu", "production_eu"}
+)
 
 
 def _source_from_sdk(source: Any) -> SourceInfo:
@@ -74,7 +71,7 @@ class JunctionState(rx.State):
     _environment: ClassVar[str] = "sandbox"
     _client: ClassVar[Any | None] = None  # AsyncVital, typed as Any to avoid import at module level
     _on_load_events: ClassVar[dict[uuid.UUID, list[EventType[()]]]] = {}
-    _dependent_handlers: ClassVar[dict[int, EventCallback]] = {}
+    _dependent_handlers: ClassVar[dict[int, rx.EventHandler]] = {}
     _init_wait_timeout_seconds: ClassVar[float] = 1.0
 
     @classmethod
@@ -87,12 +84,12 @@ class JunctionState(rx.State):
     @classmethod
     def _set_environment(cls, environment: str) -> None:
         """Set the Junction environment."""
-        if environment not in _ENVIRONMENT_MAP:
+        if environment not in _VALID_ENVIRONMENTS:
             logger.warning(
                 "Unknown environment '%s', defaulting to 'sandbox'. "
                 "Valid options: %s",
                 environment,
-                list(_ENVIRONMENT_MAP.keys()),
+                sorted(_VALID_ENVIRONMENTS),
             )
             environment = "sandbox"
         cls._environment = environment
@@ -125,7 +122,7 @@ class JunctionState(rx.State):
         return self._client
 
     @classmethod
-    def register_dependent_handler(cls, handler: EventCallback) -> None:
+    def register_dependent_handler(cls, handler: rx.EventHandler) -> None:
         """Register a handler to be called after initialization.
 
         Uses hash-based dedup to prevent double-registration.
@@ -143,7 +140,7 @@ class JunctionState(rx.State):
         cls._on_load_events[uid] = events
 
     @rx.event
-    async def initialize(self) -> list[EventCallback]:
+    async def initialize(self) -> list[rx.EventHandler]:
         """Initialize the Junction state. Sets is_initialized and fires dependent handlers."""
         self.is_initialized = True
         return list(self._dependent_handlers.values())
@@ -155,8 +152,12 @@ class JunctionState(rx.State):
         Args:
             uid: String UUID identifying the on_load event batch.
         """
-        parsed_uid = uuid.UUID(uid) if isinstance(uid, str) else uid
-        on_loads = self._on_load_events.get(parsed_uid, [])
+        try:
+            parsed_uid = uuid.UUID(uid) if isinstance(uid, str) else uid
+        except ValueError:
+            logger.warning("wait_for_init called with invalid UUID: %r", uid)
+            return []
+        on_loads = self._on_load_events.pop(parsed_uid, [])
 
         start = time.monotonic()
         while time.monotonic() - start < self._init_wait_timeout_seconds:
@@ -208,7 +209,7 @@ class JunctionState(rx.State):
         self.connected_sources = providers
 
     @rx.event
-    async def disconnect_provider(self, provider: str) -> EventCallback | None:
+    async def disconnect_provider(self, provider: str) -> rx.EventHandler | None:
         """Disconnect a specific provider for the current user.
 
         Args:
@@ -840,7 +841,7 @@ class JunctionUser(JunctionState):
             for p in getattr(result, "historical_pulls", []) or []
         ]
 
-    @rx.event
+    @rx.event(background=True)
     async def load_user(self) -> None:
         """Load the current user's connections and health data.
 
@@ -968,7 +969,7 @@ def junction_provider(
     JunctionState._set_environment(environment)
 
     if register_user_state:
-        register_on_auth_change_handler(JunctionUser.load_user)
+        register_on_auth_change_handler(JunctionUser.load_user)  # type: ignore[arg-type]
 
     # In Phase 1, we just return children wrapped in a fragment.
     # Phase 2 will add the actual JunctionLinkProvider React component.
@@ -1039,7 +1040,7 @@ def on_load(
     return [JunctionState.wait_for_init(str(uid))]  # type: ignore[list-item]
 
 
-def register_on_auth_change_handler(handler: EventCallback) -> None:
+def register_on_auth_change_handler(handler: rx.EventHandler) -> None:
     """Register an event handler to be called after Junction initialization.
 
     Args:

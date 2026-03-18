@@ -195,7 +195,7 @@ def _parse_event(body: dict[str, Any]) -> WebhookEvent:
 
 def create_webhook_router(
     prefix: str = "/junction",
-    secret: str = "",
+    secret: str | None = None,
     tags: Sequence[str] | None = None,
     on_event: WebhookHandler | None = None,
 ) -> APIRouter:
@@ -210,7 +210,7 @@ def create_webhook_router(
     Returns:
         A FastAPI APIRouter with webhook endpoints.
     """
-    _webhook_secret = secret
+    _webhook_secret = secret or ""
     if not _webhook_secret:
         logger.warning(
             "Junction webhook secret not set. "
@@ -238,7 +238,14 @@ def create_webhook_router(
                     status_code=401,
                 )
 
-        body: dict[str, Any] = await request.json()
+        try:
+            body: dict[str, Any] = await request.json()
+        except (ValueError, UnicodeDecodeError) as exc:
+            logger.warning("Webhook request has malformed JSON body: %s", exc)
+            return JSONResponse(
+                content={"error": "malformed_json"},
+                status_code=400,
+            )
         event = _parse_event(body)
         logger.info(
             "Received Junction webhook: %s (user=%s)",
