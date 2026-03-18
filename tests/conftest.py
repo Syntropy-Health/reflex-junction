@@ -14,9 +14,11 @@ def _reset_state():
     JunctionState._client = None
     JunctionState._on_load_events = {}
     JunctionState._dependent_handlers = {}
+    JunctionState._init_wait_timeout_seconds = 1.0
     yield
     JunctionState._api_key = None
     JunctionState._environment = "sandbox"
     JunctionState._client = None
     JunctionState._on_load_events = {}
     JunctionState._dependent_handlers = {}
+    JunctionState._init_wait_timeout_seconds = 1.0
