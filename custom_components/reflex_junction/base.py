@@ -35,9 +35,9 @@ class JunctionLink(JunctionBase):
     env: rx.Var[str]
     public_key: rx.Var[str]
 
-    on_success: rx.EventHandler[lambda: []]
-    on_exit: rx.EventHandler[lambda: []]
-    on_error: rx.EventHandler[lambda: []]
+    on_success: rx.EventHandler[lambda metadata: [metadata]]
+    on_exit: rx.EventHandler[lambda metadata: [metadata]]
+    on_error: rx.EventHandler[lambda metadata: [metadata]]
 
 
 junction_link = JunctionLink.create
@@ -66,9 +66,9 @@ class JunctionLinkButton(rx.Component):
     link_token: rx.Var[str]
     env: rx.Var[str]
 
-    on_success: rx.EventHandler[lambda: []]
-    on_exit: rx.EventHandler[lambda: []]
-    on_error: rx.EventHandler[lambda: []]
+    on_success: rx.EventHandler[lambda metadata: [metadata]]
+    on_exit: rx.EventHandler[lambda metadata: [metadata]]
+    on_error: rx.EventHandler[lambda metadata: [metadata]]
 
     def add_imports(self) -> dict[str, Any]:
         return {"@tryvital/vital-link": ["useVitalLink"]}

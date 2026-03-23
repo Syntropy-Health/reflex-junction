@@ -192,3 +192,34 @@ class TestAsyncEventHandlers:
         assert state.is_initialized is False
         await JunctionState.initialize.fn(state)
         assert state.is_initialized is True
+
+    @pytest.mark.asyncio()
+    async def test_on_provider_connected_refreshes(self, state, mock_client):
+        state.junction_user_id = "vital-user-123"
+        metadata = {"provider": "oura", "status": "connected"}
+        result = await JunctionState.on_provider_connected.fn(state, metadata)
+        assert result == JunctionState.get_connected_providers
+
+    @pytest.mark.asyncio()
+    async def test_on_provider_connected_no_user_id(self, state):
+        metadata = {"provider": "oura"}
+        result = await JunctionState.on_provider_connected.fn(state, metadata)
+        assert result is None
+
+    @pytest.mark.asyncio()
+    async def test_on_provider_connected_empty_metadata(self, state):
+        state.junction_user_id = "vital-user-123"
+        result = await JunctionState.on_provider_connected.fn(state, {})
+        assert result == JunctionState.get_connected_providers
+
+    @pytest.mark.asyncio()
+    async def test_on_link_exit(self, state):
+        metadata = {"reason": "user_closed"}
+        await JunctionState.on_link_exit.fn(state, metadata)
+        # Should not raise
+
+    @pytest.mark.asyncio()
+    async def test_on_link_error(self, state):
+        metadata = {"error_type": "auth_failed"}
+        await JunctionState.on_link_error.fn(state, metadata)
+        # Should not raise
