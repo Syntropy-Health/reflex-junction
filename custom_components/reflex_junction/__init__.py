@@ -6,6 +6,12 @@ from .base import (
     junction_link,
     junction_link_button,
 )
+from .control_components import (
+    connected,
+    disconnected,
+    junction_loaded,
+    junction_loading,
+)
 from .fastapi_helpers import (
     ConnectionEvent,
     DataEvent,
@@ -16,10 +22,12 @@ from .fastapi_helpers import (
     register_webhook_api,
 )
 from .junction_provider import (
+    JunctionLinkSynchronizer,
     JunctionState,
     JunctionUser,
     MissingApiKeyError,
     junction_provider,
+    link_redirect,
     on_load,
     register_on_auth_change_handler,
     wrap_app,
@@ -53,6 +61,7 @@ __all__ = [
     "JunctionConfig",
     "JunctionLink",
     "JunctionLinkButton",
+    "JunctionLinkSynchronizer",
     "JunctionState",
     "JunctionUser",
     "LabOrder",
@@ -70,10 +79,15 @@ __all__ = [
     "WebhookHandler",
     "WebhookVerificationError",
     "WorkoutSummary",
+    "connected",
     "create_webhook_router",
+    "disconnected",
     "junction_link",
     "junction_link_button",
+    "junction_loaded",
+    "junction_loading",
     "junction_provider",
+    "link_redirect",
     "on_load",
     "register_on_auth_change_handler",
     "register_webhook_api",

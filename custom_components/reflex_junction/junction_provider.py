@@ -272,6 +272,81 @@ class JunctionState(rx.State):
         """The current link web URL for redirect-based flow."""
         return self._link_web_url
 
+    @rx.event
+    async def on_provider_connected(
+        self, metadata: dict[str, Any]
+    ) -> rx.EventHandler | None:
+        """Handle successful provider connection from Link widget.
+
+        Automatically refreshes the connected providers list.
+
+        Args:
+            metadata: Connection metadata from the Link widget callback.
+        """
+        logger.info("Provider connected: %s", metadata)
+        if not self.junction_user_id:
+            logger.warning("No junction_user_id set — skipping provider refresh.")
+            return None
+        return JunctionState.get_connected_providers  # type: ignore[return-value]
+
+    @rx.event
+    async def on_link_exit(self, metadata: dict[str, Any]) -> None:
+        """Handle user exiting the Link widget without connecting.
+
+        Args:
+            metadata: Exit metadata from the Link widget callback.
+        """
+        logger.info("Link widget exited: %s", metadata)
+
+    @rx.event
+    async def on_link_error(self, metadata: dict[str, Any]) -> None:
+        """Handle Link widget error.
+
+        Args:
+            metadata: Error metadata from the Link widget callback.
+        """
+        logger.warning("Link widget error: %s", metadata)
+
+
+class JunctionLinkSynchronizer(rx.Component):
+    """Headless component that auto-initializes Junction state on mount.
+
+    Uses ``EventLoopContext`` + ``ReflexEvent`` to bridge React lifecycle
+    to Python state, mirroring ``ClerkSessionSynchronizer`` from
+    ``reflex-clerk-api``.  Renders children passthrough (no visual output).
+
+    This component is automatically included when using
+    :func:`junction_provider` or :func:`wrap_app`.
+    """
+
+    tag = "JunctionLinkSynchronizer"
+
+    def add_imports(self) -> rx.ImportDict:
+        return {
+            "react": ["useContext", "useEffect"],
+            "$/utils/context": ["EventLoopContext"],
+            "$/utils/state": ["ReflexEvent"],
+        }
+
+    def add_custom_code(self) -> list[str]:
+        state_name = JunctionState.get_full_name()
+        return [
+            """
+function JunctionLinkSynchronizer({ children }) {
+  const [addEvents, connectErrors] = useContext(EventLoopContext)
+
+  useEffect(() => {
+    if (addEvents) {
+      addEvents([ReflexEvent("%s.initialize", {})])
+    }
+  }, [addEvents])
+
+  return (<>{children}</>)
+}
+"""
+            % state_name
+        ]
+
 
 class JunctionUser(JunctionState):
     """Extended Junction state with health data summaries.
@@ -971,9 +1046,7 @@ def junction_provider(
     if register_user_state:
         register_on_auth_change_handler(JunctionUser.load_user)  # type: ignore[arg-type]
 
-    # In Phase 1, we just return children wrapped in a fragment.
-    # Phase 2 will add the actual JunctionLinkProvider React component.
-    return rx.fragment(*children)
+    return JunctionLinkSynchronizer.create(*children)
 
 
 def wrap_app(
@@ -1047,3 +1120,20 @@ def register_on_auth_change_handler(handler: rx.EventHandler) -> None:
         handler: An rx.EventHandler to call after initialization.
     """
     JunctionState.register_dependent_handler(handler)
+
+
+def link_redirect() -> rx.event.EventSpec:
+    """Create a redirect event to the Junction Link web URL.
+
+    Use this for URL-based provider connection flow when the React
+    hook approach is not suitable.  Requires calling
+    :meth:`JunctionState.create_link_token` first to populate the URL.
+
+    Usage::
+
+        rx.button("Connect via URL", on_click=junction.link_redirect())
+
+    Returns:
+        A Reflex redirect event targeting the link_web_url.
+    """
+    return rx.redirect(JunctionState.link_web_url)
